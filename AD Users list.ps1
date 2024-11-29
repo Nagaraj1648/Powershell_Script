@@ -3,3 +3,4 @@
 $ADUsers = Get-ADUser -Filter * -Properties Whencreated | select samaccountname,whencreated
 ($ADUsers).count
 $ADUsers | select samaccountname
+$ADUsers
