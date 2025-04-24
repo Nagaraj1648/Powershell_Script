@@ -20,14 +20,14 @@ resource "aws_security_group" "allow_ssh" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # SSH from any IP (not secure for prod!)
+    cidr_blocks = ["0.0.0.0/0"] # 🚨 Not safe for production!
   }
 
   ingress {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Jenkins default port
+    cidr_blocks = ["0.0.0.0/0"] # 🚨 Jenkins web interface open to all!
   }
 
   egress {
@@ -36,9 +36,13 @@ resource "aws_security_group" "allow_ssh" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "allow_ssh"
+  }
 }
 
-# 🔑 Key pair (make sure my-ec2-key.pub exists in the same directory)
+# 🔑 Key pair
 resource "aws_key_pair" "my_key" {
   key_name   = "my-key"
   public_key = file("${path.module}/my-ec2-key.pub")
@@ -46,26 +50,30 @@ resource "aws_key_pair" "my_key" {
 
 # 💻 EC2 instance with Jenkins setup
 resource "aws_instance" "app_server" {
-  ami                    = "ami-04f167a56786e4b09" # Ubuntu 22.04 LTS in us-east-2
+  ami                    = "ami-04f167a56786e4b09" # Ubuntu 22.04 LTS
   instance_type          = "t2.micro"
   key_name               = aws_key_pair.my_key.key_name
   vpc_security_group_ids = [aws_security_group.allow_ssh.id]
 
-  user_data = <<EOF
-#!/bin/bash
-apt-get update -y
-apt-get install -y openjdk-11-jdk gnupg2 curl
-
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | gpg --dearmor -o /usr/share/keyrings/jenkins-keyring.gpg
-
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.gpg] https://pkg.jenkins.io/debian-stable binary/" > /etc/apt/sources.list.d/jenkins.list
-
-apt-get update -y
-apt-get install -y jenkins
-
-systemctl enable jenkins
-systemctl start jenkins
-EOF
+  user_data = <<-EOF
+    #!/bin/bash
+    set -e
+    for i in {1..5}; do
+      apt-get update -y && break
+      sleep 10
+    done
+    apt-get install -y fontconfig openjdk-21-jdk wget gnupg
+    java -version
+    wget -O /usr/share/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+    echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" > /etc/apt/sources.list.d/jenkins.list
+    for i in {1..5}; do
+      apt-get update -y && break
+      sleep 10
+    done
+    apt-get install -y jenkins
+    systemctl enable jenkins
+    systemctl start jenkins
+  EOF
 
   tags = {
     Name = "JenkinsServer"
